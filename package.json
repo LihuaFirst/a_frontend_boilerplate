@@ -1,7 +1,7 @@
 {
-  "name": "learning journey",
+  "name": "frontend-boilerplate",
   "version": "1.0.0",
-  "description": "learning journey",
+  "description": "frontend boilerplate",
   "main": "index.html",
   "scripts": {
     "start": "gulp",
