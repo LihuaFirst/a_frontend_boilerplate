@@ -2,20 +2,46 @@
 // Importing specific gulp API functions lets us write them below as series() instead of gulp.series()
 const {src, dest, watch, series, parallel } = require('gulp');
 
+// Configuration
+const config = {
+	localhostPort: 8080,
+	scripts: true,     // Turn on/off script tasks
+	styles: true,      // Turn on/off styles tasks 
+	cacheBust: true   // Turn on/off cacheBust tasks
+}
+
+/**
+ * File Version
+ */
+
+const package = require('./package.json');
+function parseVersion(string) {
+	return string.split('.').join('-');
+}
+var fileVersion = config.cacheBust ? '-' + parseVersion(package.version) : '';
+
 // Importing all the Gulp-related packages we want to use
-const sourcemaps = require('gulp-sourcemaps');
-const sass = require('gulp-sass');
-const concat = require('gulp-concat');
 const replace = require('gulp-replace');
 const del = require('del');
-const jshint = require('gulp-jshint');
-const stylish = require('jshint-stylish');
-const cleanCSS = require('gulp-clean-css');
 const rename = require('gulp-rename');
 const connect = require('gulp-connect');
-const uglify = require('gulp-uglify-es').default;
+const htmlhint = require("gulp-htmlhint");
 
-// Configuration File paths
+
+// Scripts
+const jshint  = config.scripts ? require('gulp-jshint') : null;
+const stylish = config.scripts ? require('jshint-stylish') : null;
+const concat  = config.scripts ? require('gulp-concat') : null;
+const uglify  = config.scripts ? require('gulp-uglify-es').default : null;
+
+// Styles
+const sass = config.styles ? require('gulp-sass') : null;
+const sourcemaps = config.styles ? require('gulp-sourcemaps') : null;
+const cssnano = config.styles ? require('gulp-cssnano') : null;
+const postcss = config.styles ? require('gulp-postcss') : null;
+
+
+// File paths to project folders
 const paths = {
 	input: 'src',
 	output: 'dist',
@@ -25,13 +51,29 @@ const paths = {
 	},
 	styles: {
 		input: 'src/scss/**/*.{scss,sass}',
-		output: 'dist/css'
+		output: 'dist/css/'
+	},
+	html: {
+		input: 'scr/*.html',
+		output: 'dist/'
+	},
+	assets: {
+		input: 'src/assets/**/*',
+		output: 'dist/assets/'
 	}
 };
 
-const config = {
-	localhostPort: 8080
+// Cachebust
+//var cbString = new Date().getTime(); 
+function cacheBust(){
+	 //console.log(cbString);
+    return src([paths.input + '/index.html'])
+        //.pipe(replace(/cb=\d+/g, 'cb=' + cbString))
+		  .pipe(replace('style.min.css', 'style'+fileVersion+'.min.css'))
+		  .pipe(replace('main.min.js', 'main'+fileVersion+'.min.css'))
+        .pipe(dest(paths.output));
 }
+
 
 // Delete dist directory
 function cleanDist() {
@@ -40,10 +82,11 @@ function cleanDist() {
 
 // CSS Transpile: compiles the style.scss file into style.css
 function cssTranspile() {
+	if(!config.styles) return;
+	
 	return src(paths.styles.input)
 		.pipe(sourcemaps.init()) // initialize sourcemaps first
-		.pipe(sass()) // compile SCSS to CSS
-		.pipe(sourcemaps.init()) // start sourcemaps 
+		.pipe(sass())  // compile SCSS to CSS			
 		.pipe(sourcemaps.write('.')) // write sourcemaps file in current directory
 		.pipe(dest(paths.styles.output)) // put final CSS in dist folder
 		.pipe(connect.reload());
@@ -51,14 +94,12 @@ function cssTranspile() {
 
 // CSS Minify: minify css and add suffix
 function cssMinify(){
-	return src(paths.styles.output+'/style.css')
-		 .pipe(cleanCSS({
-				debug: true
-			}, (details) => { // minify css
-				console.log(`${details.name}: ${details.stats.originalSize}`);
-				console.log(`${details.name}: ${details.stats.minifiedSize}`);
-			}))		
-		 .pipe(rename({suffix: ".min"}))  // rename to *.min.css
+	if(!config.styles) return;	
+	return src(paths.styles.output+'style.css')
+		 .pipe(cssnano())		
+		 .pipe(rename({
+			suffix: fileVersion + ".min"	
+		 }))
 		 .pipe(dest(paths.styles.output)); // put final CSS in dist folder
 }
 
@@ -76,32 +117,27 @@ function jsTranspile() {
 function jsMinify(){
 	return src(paths.scripts.output+'/main.js')	
 		 .pipe(uglify())
-		 .pipe(rename({suffix: ".min"}))  // rename to *.min.css
-		 .pipe(dest(paths.scripts.output)); // put final CSS in dist folder
+		 .pipe(rename({	
+			suffix: fileVersion + ".min"			
+		 }))  // rename to *.min.css
+		 .pipe(dest(paths.scripts.output)); // put final js in dist folder
 }
 
 // Copy Assets files
 function copyAssets() {
-	return src([paths.input + '/assets/**/*'])
-		.pipe(dest(paths.output + '/assets'));
+	return src([paths.assets.input])
+		.pipe(dest(paths.assets.output));
 };
 
 
-// Copy index.html file
-
-function htmlTask() {
-	return src([paths.input + '/*.html'])
-		.pipe(dest(paths.output))
+// HTML Tasks: copy index.html file
+// FIXME: htmlhint didn't catch error
+function html() {
+	return src([paths.html.input])
+		.pipe(htmlhint('.htmlhintrc'))
+		.pipe(dest(paths.html.output))
 		.pipe(connect.reload());
 };
-
-// Cachebust
-var cbString = new Date().getTime();
-function cacheBustTask(){
-    return src([paths.input+'index.html'])
-        .pipe(replace(/cb=\d+/g, 'cb=' + cbString))
-        .pipe(dest('.'));
-}
 
 // run a webserver (with Livereload)
 function connectServer(done) {
@@ -117,7 +153,7 @@ function connectServer(done) {
 // Watch task: watch SCSS and JS paths for changes
 // If any change, run scss and js tasks simultaneously
 function watchTask(done) {
-	watch(paths.input+'/*.html', htmlTask);
+	watch(paths.input+'/*.html', html);
 	watch(paths.styles.input, series(cssTranspile, cssMinify));
 	watch(paths.scripts.input, series(jsTranspile, jsMinify));
 	done();
@@ -129,9 +165,10 @@ function watchTask(done) {
 // then runs connectServer, then watch task
 exports.default = series(
 	cleanDist,
-	parallel(htmlTask, cssTranspile, jsTranspile),
+	html,
+	parallel(cssTranspile, jsTranspile),
 	parallel(cssMinify, jsMinify),
-	cacheBustTask,
+	cacheBust,
 	connectServer,
 	watchTask
 );
@@ -145,4 +182,6 @@ exports.cssTranspile = cssTranspile;
 exports.jsTranspile = jsTranspile;
 exports.cssMinify = cssMinify;
 exports.jsMinify = jsMinify;
+exports.cacheBust = cacheBust;
+exports.html = html;
 */
