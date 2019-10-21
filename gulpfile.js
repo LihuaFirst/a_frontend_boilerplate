@@ -66,7 +66,6 @@ const paths = {
 // Cachebust
 //var cbString = new Date().getTime(); 
 function cacheBust(){
-	 //console.log(cbString);
     return src([paths.input + '/index.html'])
         //.pipe(replace(/cb=\d+/g, 'cb=' + cbString))
 		  .pipe(replace('style.min.css', 'style'+fileVersion+'.min.css'))
@@ -95,6 +94,7 @@ function cssTranspile() {
 // CSS Minify: minify css and add suffix
 function cssMinify(){
 	if(!config.styles) return;	
+	
 	return src(paths.styles.output+'style.css')
 		 .pipe(cssnano())		
 		 .pipe(rename({
@@ -105,6 +105,8 @@ function cssMinify(){
 
 // JS Transpile: concatenates and uglifies JS files to script.js
 function jsTranspile() {
+	if(!config.scripts) return;	
+	
 	return src([paths.scripts.input])
 		.pipe(concat('main.js'))
 		.pipe(jshint())
@@ -115,6 +117,8 @@ function jsTranspile() {
 
 // JS Minify: minify js and add suffix
 function jsMinify(){
+	if(!config.scripts) return;	
+	
 	return src(paths.scripts.output+'/main.js')	
 		 .pipe(uglify())
 		 .pipe(rename({	
@@ -132,7 +136,7 @@ function copyAssets() {
 
 // HTML Tasks: copy index.html file
 // FIXME: htmlhint didn't catch error
-function html() {
+function htmlTask() {
 	return src([paths.html.input])
 		.pipe(htmlhint('.htmlhintrc'))
 		.pipe(dest(paths.html.output))
@@ -153,7 +157,7 @@ function connectServer(done) {
 // Watch task: watch SCSS and JS paths for changes
 // If any change, run scss and js tasks simultaneously
 function watchTask(done) {
-	watch(paths.input+'/*.html', html);
+	watch(paths.input+'/*.html', htmlTask);
 	watch(paths.styles.input, series(cssTranspile, cssMinify));
 	watch(paths.scripts.input, series(jsTranspile, jsMinify));
 	done();
@@ -165,9 +169,9 @@ function watchTask(done) {
 // then runs connectServer, then watch task
 exports.default = series(
 	cleanDist,
-	html,
 	parallel(cssTranspile, jsTranspile),
 	parallel(cssMinify, jsMinify),
+	parallel(htmlTask, copyAssets),
 	cacheBust,
 	connectServer,
 	watchTask
