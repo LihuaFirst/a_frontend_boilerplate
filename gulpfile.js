@@ -37,6 +37,7 @@ const uglify  = config.scripts ? require('gulp-uglify-es').default : null;
 // Styles
 const sass = config.styles ? require('gulp-sass') : null;
 const sourcemaps = config.styles ? require('gulp-sourcemaps') : null;
+const autoprefixer = config.styles ? require('gulp-autoprefixer') : null;
 const cssnano = config.styles ? require('gulp-cssnano') : null;
 const postcss = config.styles ? require('gulp-postcss') : null;
 
@@ -54,7 +55,11 @@ const paths = {
 		output: 'dist/css/'
 	},
 	html: {
-		input: 'scr/*.html',
+		input: 'src/*.html',
+		output: 'dist/'
+	},
+	pug: {
+		input: 'src/*.pug',
 		output: 'dist/'
 	},
 	assets: {
@@ -69,7 +74,7 @@ function cacheBust(){
     return src([paths.input + '/index.html'])
         //.pipe(replace(/cb=\d+/g, 'cb=' + cbString))
 		  .pipe(replace('style.min.css', 'style'+fileVersion+'.min.css'))
-		  .pipe(replace('main.min.js', 'main'+fileVersion+'.min.css'))
+		  .pipe(replace('main.min.js', 'main'+fileVersion+'.min.js'))
         .pipe(dest(paths.output));
 }
 
@@ -85,7 +90,8 @@ function cssTranspile() {
 	
 	return src(paths.styles.input)
 		.pipe(sourcemaps.init()) // initialize sourcemaps first
-		.pipe(sass())  // compile SCSS to CSS			
+		.pipe(sass())  // compile SCSS to CSS		
+      .pipe(postcss([autoprefixer, cssnano]))
 		.pipe(sourcemaps.write('.')) // write sourcemaps file in current directory
 		.pipe(dest(paths.styles.output)) // put final CSS in dist folder
 		.pipe(connect.reload());
@@ -107,7 +113,7 @@ function cssMinify(){
 function jsTranspile() {
 	if(!config.scripts) return;	
 	
-	return src([paths.scripts.input])
+	return src([paths.scripts.input, '!'+paths.scripts.input+'.min.js'])
 		.pipe(concat('main.js'))
 		.pipe(jshint())
 		.pipe(jshint.reporter('jshint-stylish'))
@@ -123,7 +129,7 @@ function jsMinify(){
 		 .pipe(uglify())
 		 .pipe(rename({	
 			suffix: fileVersion + ".min"			
-		 }))  // rename to *.min.css
+		 }))  // rename to *.min.js
 		 .pipe(dest(paths.scripts.output)); // put final js in dist folder
 }
 
@@ -142,6 +148,13 @@ function htmlTask() {
 		.pipe(dest(paths.html.output))
 		.pipe(connect.reload());
 };
+
+// Pug
+function pugTask() {
+	return src([paths.pug.input])
+		.pipe(pug())
+		.pipe(dest(paths.pug.output))
+}
 
 // run a webserver (with Livereload)
 function connectServer(done) {
@@ -179,13 +192,13 @@ exports.default = series(
 
 /* Export for testing purpose
    TODO: comment out / remove after testing
+  */
 exports.cleanDist = cleanDist;
-exports.copyVendor = copyVendor;
 exports.connectServer = connectServer;
 exports.cssTranspile = cssTranspile;
-exports.jsTranspile = jsTranspile;
 exports.cssMinify = cssMinify;
+exports.jsTranspile = jsTranspile;
 exports.jsMinify = jsMinify;
+exports.htmlTask = htmlTask;
+exports.pugTask = pugTask;
 exports.cacheBust = cacheBust;
-exports.html = html;
-*/
